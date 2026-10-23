@@ -1,6 +1,5 @@
 # Generation provenance and prompts
 
-
 ## Yaw head poses v1
 
 Built-in `image_gen` edits of `concept-v1.png`, with transparent backgrounds.
@@ -13,7 +12,6 @@ Use case: precise-object-edit. Create a distinct left-looking idle head pose of 
 Right prompt (verbatim):
 
 Use case: precise-object-edit. Create a distinct right-looking idle head pose of this exact approved white dragon chibi desktop mascot. Turn ONLY her HEAD and GAZE toward the RIGHT EDGE OF THE IMAGE (viewer right), about 20 degrees from its neutral orientation, clearly readable as looking sideways rather than merely tilting. Both lavender eyes remain visible, irises noticeably aimed right; tiny curious closed-mouth smile. Keep head upright rather than cocked. White horns, pointed ears, hairclip, bangs and front hair follow the modest head turn naturally. Preserve identity, soft rounded proportions, line style, white/lavender palette and moderate detail. Keep the entire torso, dress, arms, hands, wings, lower hair, tail, legs and feet in EXACTLY the same front-facing pose, position and scale as the supplied reference. Do not move the body, lean it, gesture, add objects, change expression dramatically or redesign anything. Preserve the exact 1312x1199 canvas and whole-character framing, generous original transparent margins, feet baseline and head size/neck location; no zoom or crop. SINGLE full-body sprite on genuinely transparent alpha background. No labels, no arrows, no text, no other figures, no background or ground shadow. This is a head-turn pose for blending with the original; keep registration as close as possible.
-
 
 ## Half-blink v1
 
@@ -46,4 +44,3 @@ Generated with the built-in image tool; no programmatic image editing applied.
 Final prompt (verbatim):
 
 Use case: precise-object-edit. Asset type: closed-eye blink pose for a two-pose desktop mascot idle animation. Edit ONLY the two eyes in the supplied approved white dragon chibi image: close both eyes into relaxed thin curved eyelids with the same dark lavender lash line. Keep her tiny gentle smile unchanged. Every other pixel/element should remain as close as possible to the input: identical whole-body standing pose, head angle, exact face placement and shape, white hair locks, ahoge, horns, ears, hair ornament, earrings, wings, hands, white/lavender dress details, feet, tail, color palette, lighting, line weight, shading, alpha silhouette. Do NOT redraw, simplify, add details, shift, rotate, scale, crop or reframe the character. Preserve the original image canvas dimensions and exact registration of feet and face. No sleeping symbols, no motion lines, no extra expression, no eyebrow changes, no blush changes, no new objects, no text. The eyes alone change from open to naturally closed for a brief blink. Preserve genuinely transparent alpha background, no background color, no checkerboard, no shadow plane.
-
