@@ -21,6 +21,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { companionRoute } from '../companion/routes';
 
 import { flattenPetList, readAllConfig } from '../host/config';
 import { dshHomeDir, packageRoot } from '../host/helper-process';
@@ -62,6 +63,29 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
   const portRef = { value: options.port };
   const ai = createStandaloneAi(home, logger);
   const security = createRequestSecurity();
+  let publications = Promise.resolve();
+  const companion =
+    process.env.DSH_PET_COMPANION === '1'
+      ? new (await import('../companion/session')).CompanionSession(join(home, 'dsh-pet', 'companion'), (state) => {
+          publications = publications
+            .then(async () => {
+              const base = `http://127.0.0.1:${portRef.value}/dsh-pet-7340`;
+              const snapshot = (await (await fetch(`${base}/state`, { signal: AbortSignal.timeout(4000) })).json()) as {
+                sections: { workStatus: { data: { state?: string; task?: string } | null } };
+              };
+              const previous = snapshot.sections.workStatus.data;
+              if (previous?.state && previous.task !== 'Companion chat') return;
+              await fetch(`${base}/work-status`, {
+                method: state === 'idle' ? 'DELETE' : 'POST',
+                headers: { 'X-DSH-Pet-Token': security.token, 'content-type': 'application/json' },
+                ...(state === 'idle' ? {} : { body: JSON.stringify({ state, task: 'Companion chat' }) }),
+                signal: AbortSignal.timeout(4000),
+              });
+            })
+            .catch(() => {});
+        })
+      : undefined;
+  if (companion) routes.push(companionRoute(companion));
   const context = createStandaloneContext({
     port: () => portRef.value,
     logger,
@@ -82,6 +106,7 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
       name: 'dsh-pet-standalone',
       pid: process.pid,
       pluginRoot: packageRoot,
+      companion: !!companion,
       plugin: { root: packageRoot, version: packageVersion(packageRoot) },
       port: portRef.value,
       uptimeSec: Math.round(process.uptime()),
@@ -96,6 +121,7 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
       token: security.token,
       settingsUrl: security.authenticatedUrl(`http://127.0.0.1:${server.port}`),
       pluginRoot: packageRoot,
+      companion: !!companion,
     });
   } catch (error) {
     await context.dispose();
@@ -110,6 +136,8 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
     logger.info(`收尾（${reason}）…`);
     // 先释放插件注册的 effect（停桌面 Helper、清周期定时器），再关服务
     try {
+      await companion?.close();
+      await publications;
       await context.dispose();
     } finally {
       await server.close();
@@ -150,9 +178,11 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
     `  路由        http://127.0.0.1:${server.port}/dsh-pet-7340/`,
     `  配置        ${configSource}`,
     `  宠物        ${describePets(pets)}`,
-    desktopVisible.length === 0
-      ? '  桌面小窗    0 只：display 需要 desktop 或 both 才会出现透明小窗（服务仍在运行）'
-      : `  桌面小窗    ${desktopVisible.length} 只`,
+    process.env.DSH_PET_EXTERNAL_FRONTEND === '1'
+      ? '  桌面小窗    外部前端模式：不启动 Electron Helper'
+      : desktopVisible.length === 0
+        ? '  桌面小窗    0 只：display 需要 desktop 或 both 才会出现透明小窗（服务仍在运行）'
+        : `  桌面小窗    ${desktopVisible.length} 只`,
     ai.isReady()
       ? '  AI          本机 API 已启用；自动碎碎念遵循设置页开关'
       : '  AI          未配置或未启用，不发送模型请求；右键“打开 AI 设置”后在本机填写',

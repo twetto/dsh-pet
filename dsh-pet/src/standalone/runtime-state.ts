@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { writePrivateJson } from './ai-storage';
 
 interface RuntimeDetails {
+  companion?: boolean;
   port: number;
   token: string;
   settingsUrl: string;

@@ -79,6 +79,8 @@
     "start:desktop": "node scripts/start-desktop.mjs",
     "standalone": "node lib/standalone.js",
     "start:app": "node scripts/start-app.mjs",
+    "start:companion": "node scripts/start-companion.mjs",
+    "companion:portable": "node scripts/companion-portable.mjs",
     "dist": "node scripts/dist.mjs",
     "dev:mock": "node scripts/dev/mock-server.mjs",
     "build": "node scripts/prepare.js",

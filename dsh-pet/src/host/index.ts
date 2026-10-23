@@ -1227,6 +1227,7 @@ export function apply(ctx: any): void {
   /** 拉起桌面 Helper：先探测本机 Electron；缺失时进程内异步下载
    *  （不 spawn 子进程，CLI node 与 DSH Desktop 均适用），下载完成后自动拉起。 */
   const startHelper = (): void => {
+    if (process.env.DSH_PET_EXTERNAL_FRONTEND === '1') return;
     if (inProcessHost) return; // 应用模式：不探测、不下载 Electron
     if (helper || electronEnsure || disposed) return;
     if (!hasDesktopPet && !(desktopModeEverActive && trayOn)) {

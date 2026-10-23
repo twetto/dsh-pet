@@ -1,5 +1,21 @@
 # dsh-pet 🐾
 
+## This fork: GPT companion and native Linux frontend
+
+This fork adds an unofficial GPT dragon-girl avatar, a Quickshell frontend for
+Linux/Wayland, and a compact Electron chat window backed by a persistent Codex
+conversation and private app-owned SQLite history.
+
+- [Linux frontend setup and interactions](dsh-pet/runtime/quickshell/README.md)
+- [Companion chat, startup and portable conversation handoff](dsh-pet/runtime/companion/README.md)
+- [Avatar assets and provenance](dsh-pet/assets/gpt-girl/README.md)
+
+The Linux chat milestone is tested. Windows conversation round-trip is still an
+acceptance task, not a completed portability claim. Private dialogue, credentials,
+review sessions and experimental video intermediates are not distributed. The
+accepted 344px idle clip is included; the full-resolution keeper remains local.
+The upstream DeepSeek pet and its original documentation are retained below.
+
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-pet?label=npm&color=blue"></a>
   <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm monthly downloads" src="https://img.shields.io/npm/dm/dsh-pet?label=%E6%9C%88%E4%B8%8B%E8%BD%BD&color=brightgreen"></a>

@@ -51,3 +51,25 @@ dsh-pet/dist-app/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Private companion state and local development notes
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db-wal
+*.db-shm
+writer.lock
+standalone-runtime.json
+auth.json
+dragon-chat-*.json
+*companion-snapshot*.json
+HANDOFF.md
+LINUX_FRONTEND_PROPOSAL.md
+docs/reviews/
+
+# Reproducible avatar experiments; keep only the accepted playback clip in Git
+dsh-pet/assets/gpt-girl/video-*/*
+!dsh-pet/assets/gpt-girl/video-*/README.md
+!dsh-pet/assets/gpt-girl/video-resolutions-v8/idle-loop-344-v8.webp
