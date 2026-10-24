@@ -50,19 +50,13 @@ function trusted(event) {
 function place(reset = false) {
   const size = windowSize(current, height);
   const bounds = window.getBounds();
-  const area = reset ? screen.getPrimaryDisplay().workArea : screen.getDisplayMatching(bounds).workArea;
-  window.setBounds(
-    confine(
-      {
-        ...size,
-        x: reset
-          ? area.x + area.width - size.width - 28 - slotIndex * Math.min(280, Math.floor(area.width / 3))
-          : bounds.x,
-        y: reset ? area.y + area.height - size.height - 12 : bounds.y + bounds.height - size.height,
-      },
-      area,
-    ),
-  );
+  const area = screen.getPrimaryDisplay().workArea;
+  const next = {
+    ...size,
+    x: reset ? area.x + area.width - size.width - 28 - slotIndex * Math.min(280, Math.floor(area.width / 3)) : bounds.x,
+    y: reset ? area.y + area.height - size.height - 12 : bounds.y + bounds.height - size.height,
+  };
+  window.setBounds(reset ? confine(next, area) : next);
 }
 function select(value) {
   current = avatarId(value);
@@ -260,14 +254,8 @@ else {
             pointer = undefined;
             return;
           }
-          window.setBounds(
-            confine(
-              // Always use the chosen DIP size, not GetBounds' rounded size.
-              // Reapplying rounded widths on fractional DPI accumulates growth.
-              { ...drag.size, x: point.x - drag.x, y: point.y - drag.y },
-              screen.getDisplayNearestPoint(point).workArea,
-            ),
-          );
+          // Keep the chosen DIP size stable, but allow movement beyond work areas.
+          window.setBounds({ ...drag.size, x: Math.round(point.x - drag.x), y: Math.round(point.y - drag.y) });
         } else if (!menuOpen && (!pointer || point.x !== pointer.x || point.y !== pointer.y)) {
           pointer = point;
           if (
