@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, symlinkSync, truncateSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readdirSync,
+  symlinkSync,
+  truncateSync,
+  unlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { captureAgyTranscript, importAgyTranscript } from './agy-transcript.ts';
+import { captureAgyTranscript, importAgyTranscript, recoverAgyTranscriptCheckpoint } from './agy-transcript.ts';
 import { CompanionStore } from './store.ts';
 import { CompanionImages } from './images.ts';
+import { prepareAgyHome } from './agy-home.ts';
 
 const thread = '12345678-1234-4234-8234-123456789abc';
 const redPng =
@@ -183,6 +193,86 @@ test('transcript reads are bounded and reject invalid IDs and linked log files',
       symlinkSync(state.media, state.log);
       assert.throws(() => captureAgyTranscript(state.home, thread), /Unsafe/);
     }
+  } finally {
+    state.close();
+  }
+});
+
+test('image paths through the approved isolated brain alias import without allowing other junctions', () => {
+  const state = setup();
+  const { home, store, images, write } = state;
+  const alias = join(home, 'isolated');
+  try {
+    prepareAgyHome(alias, home);
+    const checkpoint = captureAgyTranscript(home, thread);
+    const uri = join(alias, '.gemini/antigravity-cli/brain', thread, '.user_uploaded/red.png');
+    write([{ ...user('Alias upload'), media: [{ mime_type: 'image/png', uri }] }, assistant('Red')]);
+    assert.throws(() => importAgyTranscript(home, thread, checkpoint, store, images), /outside/);
+    assert.equal(importAgyTranscript(home, thread, checkpoint, store, images, {}, alias), 2);
+    assert.equal(images.read(store.messages()[0].images![0].id).bytes.toString('base64'), redPng);
+    assert.equal(importAgyTranscript(home, thread, checkpoint, store, images, {}, alias), 0);
+    const other = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const outside = join(alias, '.gemini/antigravity-cli/brain', other, '.user_uploaded/other.png');
+    mkdirSync(join(outside, '..'), { recursive: true });
+    writeFileSync(outside, Buffer.from(redPng, 'base64'));
+    const next = captureAgyTranscript(home, thread);
+    const rows = [{ ...user('Alias upload'), media: [{ mime_type: 'image/png', uri }] }, assistant('Red')];
+    write([...rows, { ...user('Wrong thread'), media: [{ mime_type: 'image/png', uri: outside }] }]);
+    assert.throws(() => importAgyTranscript(home, thread, next, store, images, {}, alias), /outside/);
+    assert.equal(store.messages().length, 2);
+    unlinkSync(join(alias, '.gemini/antigravity-cli/brain'));
+    symlinkSync(
+      join(home, '.gemini/antigravity-cli/conversations'),
+      join(alias, '.gemini/antigravity-cli/brain'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    assert.throws(() => importAgyTranscript(home, thread, checkpoint, store, images, {}, alias), /Unverified/);
+    assert.equal(store.messages().length, 2);
+    assert.equal(readdirSync(join(home, 'images')).filter((name) => name.endsWith('.bin')).length, 1);
+  } finally {
+    state.close();
+  }
+});
+
+test('legacy checkpoint recovery requires a complete local prefix and rejects ambiguous or partial histories', () => {
+  const state = setup();
+  try {
+    const local = [
+      { id: '11111111-1111-4111-8111-111111111111', role: 'user', text: 'Hello', status: 'complete', created: 1 },
+      { id: '22222222-2222-4222-8222-222222222222', role: 'assistant', text: 'Hi', status: 'complete', created: 2 },
+    ];
+    state.write([user('Hello'), assistant('Hi')]);
+    const expected = captureAgyTranscript(state.home, thread);
+    state.write([user('Hello'), assistant('Hi'), user('Browser'), assistant('Reply')]);
+    assert.deepEqual(recoverAgyTranscriptCheckpoint(state.home, thread, local), expected);
+    assert.deepEqual(
+      recoverAgyTranscriptCheckpoint(state.home, thread, [local[0], { ...local[1], text: 'Hi\n' }]),
+      expected,
+    );
+    assert.throws(() => recoverAgyTranscriptCheckpoint(state.home, thread, []), /complete/);
+    assert.throws(
+      () =>
+        recoverAgyTranscriptCheckpoint(
+          state.home,
+          thread,
+          Array.from({ length: 200 }, (_, i) => local[i % 2]),
+        ),
+      /complete/,
+    );
+    assert.throws(
+      () => recoverAgyTranscriptCheckpoint(state.home, thread, [{ ...local[0], text: 'Other' }, local[1]]),
+      /match/,
+    );
+    assert.throws(
+      () => recoverAgyTranscriptCheckpoint(state.home, thread, [local[0], { ...local[1], status: 'interrupted' }]),
+      /complete/,
+    );
+    assert.throws(
+      () => recoverAgyTranscriptCheckpoint(state.home, thread, [{ ...local[0], id: 'agy:imported:0' }, local[1]]),
+      /complete/,
+    );
+    state.write([user('Earlier missing'), assistant('Earlier answer'), user('Hello'), assistant('Hi')]);
+    assert.throws(() => recoverAgyTranscriptCheckpoint(state.home, thread, local), /match/);
   } finally {
     state.close();
   }

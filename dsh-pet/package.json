@@ -80,6 +80,7 @@
     "standalone": "node lib/standalone.js",
     "start:app": "node scripts/start-app.mjs",
     "start:companion": "node scripts/start-companion.mjs",
+    "start:avatar": "node scripts/start-avatar.mjs",
     "companion:portable": "node scripts/companion-portable.mjs",
     "dist": "node scripts/dist.mjs",
     "dev:mock": "node scripts/dev/mock-server.mjs",
@@ -92,7 +93,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:ui": "node --test scripts/tests/*.test.mjs"
+    "test:ui": "node --test --test-concurrency=1 scripts/tests/*.test.mjs"
   },
   "license": "MIT",
   "engines": {

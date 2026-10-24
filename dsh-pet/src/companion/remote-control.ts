@@ -1,8 +1,9 @@
 import { stripVTControlCharacters } from 'node:util';
 import type { IPty } from 'node-pty';
+import { remoteExecutable } from './remote-executable';
 
 export interface RemoteControl {
-  start(executable: string, args: string[], cwd: string): Promise<string>;
+  start(executable: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -25,8 +26,8 @@ export class AgyRemoteControl implements RemoteControl {
     this.onExit = onExit;
   }
 
-  async start(executable: string, args: string[], cwd: string): Promise<string> {
-    this.starting = this.open(executable, args, cwd);
+  async start(executable: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
+    this.starting = this.open(executable, args, cwd, env);
     try {
       return await this.starting;
     } catch (error) {
@@ -35,18 +36,27 @@ export class AgyRemoteControl implements RemoteControl {
     }
   }
 
-  private async open(executable: string, args: string[], cwd: string): Promise<string> {
+  private async open(executable: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
+    const environment = { ...(env ?? process.env), TERM: 'xterm-256color' };
+    const resolved = remoteExecutable(executable, cwd, environment);
     const { spawn } = await import('node-pty').catch(() => {
       throw new Error('Remote Control requires the optional node-pty dependency. Reinstall dependencies for this OS.');
     });
     if (this.stopped) throw new Error('Remote Control was stopped.');
-    const terminal = spawn(executable, args, {
-      cwd,
-      name: 'xterm-256color',
-      cols: 240,
-      rows: 40,
-      env: { ...process.env, TERM: 'xterm-256color' },
-    });
+    let terminal: IPty;
+    try {
+      terminal = spawn(resolved, args, {
+        cwd,
+        name: 'xterm-256color',
+        cols: 240,
+        rows: 40,
+        env: environment,
+      });
+    } catch {
+      throw new Error(
+        `Browser upload could not start the terminal for "${resolved}". Check that the executable and companion workspace exist, and rebuild node-pty for this Node version. Text chat is still available.`,
+      );
+    }
     this.terminal = terminal;
     let resolveExit!: () => void;
     this.exited = new Promise<void>((resolve) => {
@@ -82,6 +92,14 @@ export class AgyRemoteControl implements RemoteControl {
         }
         if (/Remote control is not enabled for your account/i.test(plain)) {
           reject(new Error('Remote Control is not enabled for this Antigravity account.'));
+          return;
+        }
+        if (/Welcome to Antigravity/i.test(plain) && /terms|continue/i.test(plain)) {
+          reject(
+            new Error(
+              'Browser upload is waiting for Antigravity first-run setup. Complete setup in your normal agy CLI, then restart the companion service and retry. No terms or permissions were accepted automatically.',
+            ),
+          );
           return;
         }
         const announcement = plain.lastIndexOf('Remote control on for this session.');

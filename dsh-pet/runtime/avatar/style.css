@@ -1,0 +1,32 @@
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+#avatar {
+  position: absolute;
+  inset: 12px;
+  width: calc(100% - 24px);
+  height: calc(100% - 24px);
+  object-fit: contain;
+  cursor: grab;
+  -webkit-user-drag: none;
+}
+body.dragging #avatar {
+  cursor: grabbing;
+}
+#error {
+  position: absolute;
+  inset: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #faf6ff;
+  color: #653c79;
+  font:
+    14px/1.5 'Microsoft JhengHei',
+    sans-serif;
+}

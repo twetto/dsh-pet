@@ -12,6 +12,8 @@ import { companionRoute } from './routes.ts';
 import { listenStandaloneServer } from '../standalone/server.ts';
 import { createRequestSecurity } from '../standalone/request-security.ts';
 import { isRemoteControlUrl } from './remote-control.ts';
+import { prepareAgyHome } from './agy-home.ts';
+import { captureAgyTranscript } from './agy-transcript.ts';
 
 const fixture = fileURLToPath(new URL('../../scripts/tests/agy-protocol-fixture.mjs', import.meta.url));
 function setup() {
@@ -343,5 +345,71 @@ test('Gemini routes are capability protected and separate from GPT routes', asyn
     await session.close();
     await server.close();
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('restart recovers failed browser image handoffs from a retained or verifiable legacy checkpoint', async () => {
+  for (const mode of ['retained', 'legacy']) {
+    const home = mkdtempSync(join(tmpdir(), 'pet-agy-recover-'));
+    const thread = '12345678-1234-4234-8234-123456789abc';
+    const ledger = join(home, 'chat');
+    const alias = join(ledger, 'agy-home');
+    prepareAgyHome(alias, home);
+    const native = join(home, '.gemini/antigravity-cli/brain', thread);
+    const log = join(native, '.system_generated/logs/transcript.jsonl');
+    mkdirSync(join(log, '..'), { recursive: true });
+    mkdirSync(join(native, '.user_uploaded'));
+    const uri = join(alias, '.gemini/antigravity-cli/brain', thread, '.user_uploaded/image.png');
+    writeFileSync(
+      uri,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAF0lEQVR4nGP4z8BAEiJN9aiGUQ1DSgMAkPn/Afnh+ngAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    );
+    const row = (index: number, user: boolean, text: string) => ({
+      step_index: index,
+      status: 'DONE',
+      created_at: '2026-10-24T10:19:41Z',
+      source: user ? 'USER_EXPLICIT' : 'MODEL',
+      type: user ? 'USER_INPUT' : 'PLANNER_RESPONSE',
+      content: user ? '<USER_REQUEST>\n' + text + '\n</USER_REQUEST>' : text,
+    });
+    const before = [row(0, true, 'Hello'), row(1, false, 'Hi')];
+    writeFileSync(log, before.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const checkpoint = captureAgyTranscript(home, thread);
+    writeFileSync(
+      log,
+      [...before, { ...row(2, true, 'What color?'), media: [{ mime_type: 'image/png', uri }] }, row(3, false, 'Red')]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+    );
+    const initial = new CompanionStore(ledger);
+    initial.put({ id: randomUUID(), role: 'user', text: 'Hello', status: 'complete', created: 1 });
+    initial.put({ id: randomUUID(), role: 'assistant', text: 'Hi\n', status: 'complete', created: 2 });
+    initial.setMetadata('threadId', thread);
+    initial.setMetadata('platform', process.platform);
+    initial.setMetadata('remoteHistoryGap', '1');
+    initial.setMetadata('remoteSyncWarning', 'Previous browser history sync failed');
+    if (mode === 'retained')
+      initial.setMetadata('agyRemoteCheckpoint', JSON.stringify({ threadId: thread, checkpoint, priorGap: false }));
+    initial.close();
+    const create = () => new AgySession(ledger, () => {}, process.execPath, [fixture], home);
+    let session = create();
+    try {
+      assert.deepEqual(
+        session.snapshot().messages.map((m) => m.text),
+        ['Hello', 'Hi\n', 'What color?', 'Red'],
+      );
+      assert.equal(session.snapshot().messages[2].images?.length, 1);
+      assert.match(session.snapshot().notice, /Synced 2/);
+      await session.close();
+      session = create();
+      assert.equal(session.snapshot().messages.length, 4);
+      assert.equal(session.snapshot().threadId, thread);
+    } finally {
+      await session.close();
+      rmSync(home, { recursive: true, force: true });
+    }
   }
 });

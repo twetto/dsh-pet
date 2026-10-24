@@ -119,11 +119,85 @@ function userText(content: string): string {
   return content.slice(start.length, boundary);
 }
 
-function mediaPath(home: string, threadId: string, uri: unknown): string {
+/** Repair checkpoints discarded by older versions only when the entire short,
+ * complete local chat exactly matches the native prefix. Never guess a boundary
+ * from a single repeated message, a partial display window or imported history.
+ */
+export function recoverAgyTranscriptCheckpoint(
+  home: string,
+  threadId: string,
+  messages: ChatMessage[],
+): TranscriptCheckpoint {
+  if (
+    !messages.length ||
+    messages.length >= 200 ||
+    messages.length % 2 ||
+    messages.some(
+      (message, index) =>
+        !validThread.test(message.id) ||
+        message.status !== 'complete' ||
+        message.role !== (index % 2 ? 'assistant' : 'user') ||
+        !!message.images?.length,
+    )
+  )
+    throw new Error('Cannot verify the complete local history prefix');
+  const steps = readSteps(home, threadId);
+  let matched = 0;
+  for (const step of steps) {
+    const user = step.source === 'USER_EXPLICIT' && step.type === 'USER_INPUT';
+    const assistant = step.source === 'MODEL' && step.type === 'PLANNER_RESPONSE';
+    if (!user && !assistant) {
+      if (step.source === 'SYSTEM' || ['TOOL_CALL', 'TOOL_RESULT', 'TOOL_RESPONSE'].includes(step.type)) continue;
+      throw new Error('Unrecognized native message type');
+    }
+    const message = messages[matched];
+    if (
+      step.status !== 'DONE' ||
+      typeof step.content !== 'string' ||
+      (step.truncated_fields !== undefined &&
+        (!Array.isArray(step.truncated_fields) || step.truncated_fields.length)) ||
+      (step.media !== undefined && (!Array.isArray(step.media) || step.media.length)) ||
+      message.role !== (user ? 'user' : 'assistant') ||
+      (user
+        ? message.text !== userText(step.content)
+        : message.text.replace(/\r?\n$/, '') !== step.content.replace(/\r?\n$/, ''))
+    )
+      throw new Error('Local history does not match the complete native prefix');
+    matched++;
+    if (matched === messages.length) {
+      const count = step.step_index + 1;
+      return { version: 1, count, digest: digest(steps.slice(0, count)) };
+    }
+  }
+  throw new Error('Native history is shorter than the saved local history');
+}
+
+function mediaPath(home: string, threadId: string, uri: unknown, aliasHome?: string): string {
   if (typeof uri !== 'string' || uri.length > 4096 || !isAbsolute(uri))
     throw new Error('Unsafe native image reference');
+  let imagePath = uri;
   const root = directory(conversationRoot(home, threadId), ['.user_uploaded']);
-  const inside = relative(root, uri);
+  let inside = relative(root, imagePath);
+  // Agy sees its child-only home, so uploads can use the approved brain junction.
+  // Rebase only that exact alias; arbitrary symlinked paths remain rejected.
+  if (aliasHome) {
+    const aliasParent = directory(realpathSync(aliasHome), ['.gemini', 'antigravity-cli']);
+    const aliasBrain = join(aliasParent, 'brain');
+    const nativeBrain = directory(realpathSync(home), ['.gemini', 'antigravity-cli', 'brain']);
+    if (!lstatSync(aliasBrain).isSymbolicLink() || realpathSync(aliasBrain) !== realpathSync(nativeBrain))
+      throw new Error('Unverified companion native-image alias');
+    const aliasRoot = join(aliasBrain, threadId, '.user_uploaded');
+    const candidate = relative(aliasRoot, imagePath);
+    if (
+      candidate &&
+      candidate !== '..' &&
+      !candidate.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) &&
+      !isAbsolute(candidate)
+    ) {
+      inside = candidate;
+      imagePath = join(root, inside);
+    }
+  }
   if (
     !inside ||
     inside === '..' ||
@@ -133,10 +207,10 @@ function mediaPath(home: string, threadId: string, uri: unknown): string {
     throw new Error('Image is outside the native conversation');
   const parent = dirname(inside);
   directory(root, parent === '.' ? [] : parent.split(/[\\/]/));
-  const stat = lstatSync(uri);
+  const stat = lstatSync(imagePath);
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Unsafe native image file');
-  if (relative(root, realpathSync(uri)) !== inside) throw new Error('Native image path changed');
-  return uri;
+  if (relative(root, realpathSync(imagePath)) !== inside) throw new Error('Native image path changed');
+  return imagePath;
 }
 
 export function importAgyTranscript(
@@ -146,6 +220,7 @@ export function importAgyTranscript(
   store: CompanionStore,
   images: CompanionImages,
   metadata: Record<string, string> = {},
+  aliasHome?: string,
 ): number {
   const steps = readSteps(home, threadId);
   if (
@@ -198,7 +273,7 @@ export function importAgyTranscript(
         for (const value of step.media) {
           if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid native image');
           const media = value as RecordValue;
-          const path = mediaPath(home, threadId, media.uri);
+          const path = mediaPath(home, threadId, media.uri, aliasHome);
           const image = images.attachPath(path);
           staged.push(image);
           if (image.mediaType !== media.mime_type) throw new Error('Unsupported native image format');

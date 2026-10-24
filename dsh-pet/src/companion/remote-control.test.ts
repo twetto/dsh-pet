@@ -58,3 +58,19 @@ test('managed PTY reports account failure and cleans up without a persistent dae
   await assert.rejects(remote.start(process.execPath, ['-e', script], process.cwd()), /not enabled/);
   assert.equal(exited, true);
 });
+
+test('managed PTY identifies first-run setup without accepting it', async (context) => {
+  try {
+    await import('node-pty');
+  } catch {
+    context.skip('Optional native PTY not installed');
+    return;
+  }
+  const remote = new AgyRemoteControl();
+  const script =
+    "console.log('Welcome to Antigravity. Review terms and continue.'); process.stdin.on('data', data => { if (String(data).includes('/exit')) process.exit(0); });";
+  await assert.rejects(
+    remote.start(process.execPath, ['-e', script], process.cwd()),
+    /first-run setup.*No terms or permissions were accepted/,
+  );
+});

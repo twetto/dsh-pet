@@ -10,7 +10,8 @@ import type { ChatMessage } from './store';
 import { AgyRemoteControl } from './remote-control';
 import type { RemoteControl } from './remote-control';
 import { CompanionImages } from './images';
-import { captureAgyTranscript, importAgyTranscript } from './agy-transcript';
+import { prepareAgyHome } from './agy-home';
+import { captureAgyTranscript, importAgyTranscript, recoverAgyTranscriptCheckpoint } from './agy-transcript';
 import type { TranscriptCheckpoint } from './agy-transcript';
 
 type Event = Record<string, unknown>;
@@ -100,6 +101,8 @@ export class AgySession {
   private executable: string;
   private prefix: string[];
   private customizationHome: string;
+  private isolatedHome: string;
+  private environment?: NodeJS.ProcessEnv;
   private retiring?: Promise<void>;
   private remote?: RemoteControl;
   private remoteState?: { status: 'starting' | 'active' | 'stopping' | 'ended'; url?: string };
@@ -118,6 +121,7 @@ export class AgySession {
     this.executable = executable;
     this.prefix = prefix;
     this.customizationHome = customizationHome;
+    this.isolatedHome = join(directory, 'agy-home');
     this.createRemote = createRemote;
     this.store = new CompanionStore(directory);
     this.historyImages = new CompanionImages(join(directory, 'images'));
@@ -127,6 +131,21 @@ export class AgySession {
       this.notice = 'An earlier response was interrupted. History is retained; nothing was automatically resent.';
     if (this.store.metadata('remoteHistoryGap') || this.store.metadata('remoteSyncWarning'))
       this.notice = this.historyNotice();
+    // No CLI writer is owned by a newly constructed session. Retry a failed
+    // handoff from a prior process; old releases discarded its checkpoint.
+    if (this.store.metadata('remoteSyncWarning') && this.store.metadata('platform') === process.platform) {
+      try {
+        this.environment = prepareAgyHome(this.isolatedHome, this.customizationHome);
+        if (!this.store.metadata('agyRemoteCheckpoint')) {
+          const threadId = this.store.metadata('threadId')!;
+          const checkpoint = recoverAgyTranscriptCheckpoint(this.customizationHome, threadId, this.store.messages());
+          this.store.setMetadata('agyRemoteCheckpoint', JSON.stringify({ threadId, checkpoint, priorGap: false }));
+        }
+        this.syncRemoteHistory();
+      } catch {
+        /* Preserve the existing warning and history if recovery is uncertain. */
+      }
+    }
   }
 
   snapshot() {
@@ -160,7 +179,8 @@ export class AgySession {
       throw new Error(
         'Portable context restore is not implemented for Gemini; the imported history was retained but not sent.',
       );
-    checkAgyCustomizations(this.customizationHome);
+    this.environment = prepareAgyHome(this.isolatedHome, this.customizationHome);
+    checkAgyCustomizations(this.isolatedHome);
     prepareAgyWorkspace(this.workspace);
     const previous = this.store.metadata('threadId');
     if (previous && this.store.metadata('platform') !== process.platform)
@@ -168,7 +188,7 @@ export class AgySession {
     const { stdout } = await execute(
       this.executable,
       [...this.prefix, '--print', '/hooks', '--agent', agentName, '--output-format', 'json'],
-      { cwd: this.workspace, timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true },
+      { cwd: this.workspace, env: this.environment, timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true },
     );
     const report = JSON.parse(stdout) as {
       command?: {
@@ -219,6 +239,7 @@ export class AgySession {
       this.rejectOpening = reject;
       const child = spawn(this.executable, args, {
         cwd: this.workspace,
+        env: this.environment,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       });
@@ -405,10 +426,11 @@ export class AgySession {
           remoteSyncWarning: '',
           remoteSyncNotice: 'Browser history synced on return.',
         },
+        this.isolatedHome,
       );
       this.store.setMetadata('remoteSyncNotice', `Synced ${added} browser message${added === 1 ? '' : 's'} on return.`);
     } catch {
-      this.store.setMetadata('agyRemoteCheckpoint', '');
+      // Keep the checkpoint so a transient failure or importer update can retry.
       this.store.setMetadata('remoteHistoryGap', '1');
       this.store.setMetadata(
         'remoteSyncWarning',
@@ -432,6 +454,13 @@ export class AgySession {
       if (this.child) this.disconnect(this.child, 'Opening Remote Control; companion chat is paused.');
       await this.retiring;
       if (this.closed) throw new Error('Companion is closing');
+      if (this.store.metadata('agyRemoteCheckpoint')) {
+        this.syncRemoteHistory();
+        if (this.store.metadata('agyRemoteCheckpoint'))
+          throw new Error(
+            'The previous browser handoff still needs history sync. Saved history and its checkpoint were retained.',
+          );
+      }
       this.checkpointRemoteHistory(threadId);
       const remote = this.createRemote(() => {
         if (this.remote === remote && this.remoteState?.status === 'active') this.remoteState = { status: 'ended' };
@@ -448,7 +477,7 @@ export class AgySession {
         threadId,
       ];
       if (this.model) args.push('--model', this.model);
-      const url = await remote.start(this.executable, args, this.workspace);
+      const url = await remote.start(this.executable, args, this.workspace, this.environment);
       if (this.closed) throw new Error('Companion is closing');
       this.store.setMetadata('remoteHistoryGap', '1');
       this.remoteState = { status: 'active', url };

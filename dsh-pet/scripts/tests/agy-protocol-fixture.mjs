@@ -2,6 +2,12 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
+if (
+  process.env.PET_TEST_AGY_EXPECT_HOME &&
+  (process.env.HOME !== process.env.PET_TEST_AGY_EXPECT_HOME ||
+    process.env.USERPROFILE !== process.env.PET_TEST_AGY_EXPECT_HOME)
+)
+  process.exit(12);
 const emit = (value) => process.stdout.write(JSON.stringify(value) + '\n');
 if (args.includes('--print')) {
   emit({

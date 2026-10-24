@@ -199,9 +199,20 @@ a wildcard `PreToolUse` denial hook. Before starting chat it runs the no-model
 `/hooks` report and requires exactly the expected enabled hook, then verifies
 the stream's agent and request-review mode **before sending any prompt**.
 Unexpected tool events abort the connection. There is no auto-approval flag.
-Global MCP, hook and plugin manifests must be empty; the app refuses rather than
-modifying your configuration. A discovered global plugins directory also causes
-a refusal. This is CLI policy enforcement, not an OS-level sandbox.
+Gemini runs with a persistent, child-only home under its ledger directory
+(`companion-gemini/agy-home`). Your normal global plugins, MCP, hooks, rules and
+settings are not inherited or modified. Both headless chat and Remote Control
+use this home. Only the native `brain` and `conversations` directories are linked
+back to your normal Antigravity storage (Windows junctions; Unix directory links),
+so existing native thread IDs and transcript synchronization still work.
+The profile carries only the three first-run completion booleans already recorded
+by your normal CLI, so Remote Control does not get stuck at its welcome screen.
+It does not accept new terms or permissions. Authentication uses agy's OS keyring
+support; no login files are copied. If that
+login is unavailable, connection fails rather than falling back to your global
+configuration. The isolated home must also be free of global plugins/MCP/hooks;
+unexpected customizations still block startup. This is CLI configuration
+isolation and policy enforcement, not an OS-level sandbox.
 
 Messages travel over stdin, not command-line arguments. Response failures,
 timeouts and Stop preserve partial history without automatic resends. Stop
@@ -349,3 +360,18 @@ Claude.
 
 Reference: [Claude Code headless mode](https://code.claude.com/docs/en/headless)
 and [CLI flags](https://code.claude.com/docs/en/cli-reference).
+
+### Retrying failed Gemini browser-history sync
+
+Windows uploads can record image paths through the companion's isolated `brain`
+junction. The importer accepts that specific alias only after verifying its
+actual target against the native conversation directory; arbitrary links and
+cross-conversation images remain rejected.
+
+A failed sync now retains its checkpoint. Restarting the service retries the
+pending import, with native step IDs preventing duplicate messages and images.
+For failures from older builds that discarded checkpoints, recovery is limited
+to short, complete local chats whose full message sequence matches the beginning
+of the native transcript (allowing agy's extra terminal newline on assistant
+replies). Partial, imported, conflicting or display-truncated histories are left
+unchanged with a warning. This does not perform general historical backfill.

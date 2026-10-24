@@ -1,9 +1,14 @@
-# Windows companion smoke test
+# Windows companion and avatar development checks
 
-This is a test checklist, not a claim of Windows compatibility. Linux chat,
-attachments and Gemini Remote Control/history sync are verified. Windows native
-CLI discovery, filesystem permissions, ConPTY and transcript paths need testing.
-Quickshell and the `dragon` launcher are Linux-only; test chat windows first.
+Validated in this Windows checkout with Node 24.1.0: Codex/Claude/Gemini chat,
+GPT/Claude image attachments, Gemini browser upload/recognition and return/history
+sync, plus the three animated Electron avatars and one-click launch/stop scripts.
+The user verified the chat and desktop interactions; automated checks cover
+native window visibility, fractional-DPI dragging, transparency and process reuse.
+This is development-checkout validation, not an installer compatibility claim.
+Cross-monitor/mixed-DPI and long-running use still need broader manual coverage.
+The new shared companion changes have not yet been regression-tested on Linux.
+Quickshell and the `dragon` launcher remain Linux-only.
 
 ## Prepare in Windows PowerShell
 
@@ -15,15 +20,21 @@ Install/authenticate the Windows Codex, Claude Code and Antigravity CLIs separat
 Set-Location "$HOME\Documents\devs\dsh-pet\dsh-pet"
 node --version
 Get-Command codex, claude, agy
-corepack pnpm install
+corepack pnpm@11.28.8 install --frozen-lockfile
 npm run build
 ```
+
+Use the explicit pnpm version above. On Windows Node 24.1.0 with Corepack 0.32.0,
+unversioned `corepack pnpm` can select pnpm 12.15.0 and fail with
+`MODULE_NOT_FOUND` for `bin/pnpm.cjs` before dependency installation starts.
+The workspace configuration targets pnpm 11; the explicit version avoids changing
+your global package-manager default.
 
 If the checkout is elsewhere, adjust the path. If a pre-existing dependency tree
 comes from Linux, move it aside before installing rather than reusing it.
 The optional `node-pty` package must build for the service's Node version, not
 Electron's ABI. If necessary install Windows native C++ build prerequisites and
-run `corepack pnpm rebuild node-pty`. Missing PTY support should only prevent
+run `corepack pnpm@11.28.8 rebuild node-pty`. Missing PTY support should only prevent
 Remote Control, not text chat.
 
 Use a separate test data directory. CLI native conversations still use each
@@ -86,3 +97,52 @@ Record Windows version, `node --version`, CLI versions, failing checklist step a
 the sanitized error. Do not post capability URLs/tokens, auth files, conversation
 databases, native transcripts or personal screenshots. Nothing in the private
 test directory belongs in Git.
+
+## Gemini configuration isolation
+
+Gemini uses a child-only home at
+`$DSH_HOME/dsh-pet/companion-gemini/agy-home`; normal global plugins such as
+`science` can stay installed. Chat and Remote Control share this isolated
+configuration. Native conversation databases and brain transcripts remain in
+your Windows Antigravity storage through directory junctions. Login is resolved
+by agy through Windows Credential Manager; the app does not copy auth files.
+Do not put plugins, hooks or MCP configuration into the app-owned isolated home.
+After updating the code, rebuild and restart the standalone service, then reopen
+the Gemini window.
+
+Browser upload resolves `agy` to the full native `agy.exe` path before starting
+ConPTY. If it is unavailable, the error names the executable and points to
+`DSH_PET_AGY_PATH`. The isolated profile also reuses only the three completed
+onboarding flags from your normal CLI; it does not accept terms or copy login,
+plugin or permission configuration. Complete normal `agy` first-run setup first
+if browser upload reports that setup is required.
+
+If returning from browser upload previously reported a history-sync warning,
+restart the updated standalone service and reopen Gemini. It retries a retained
+checkpoint, or verifies the complete local prefix before recovering an older
+failed handoff. Do not delete the ledger or re-upload the same image to repair
+that warning. Native context and existing messages are preserved.
+
+## 模型角色動畫
+
+聊天測試完成後，保留目前服務，另開 PowerShell：
+
+```powershell
+Set-Location "$HOME\Documents\devs\dsh-pet\dsh-pet"
+$env:DSH_HOME = Join-Path $env:LOCALAPPDATA "dsh-pet-windows-smoke"
+npm run start:avatar -- gpt
+```
+
+左鍵拖曳、右鍵切換角色／大小、雙擊開啟對應聊天室。可換成 `claude` 或
+`gemini`，或從系統匣切換。目前三個角色只有待機動畫。
+操作與驗證範圍見 [Electron 角色說明](../avatar/README.md)。
+
+三個角色同時啟動可用 `npm run start:avatar -- all`；每個角色獨立移動與關閉。
+若所有程式都已關閉，先依上方步驟啟動 standalone companion 服務，保持該終端
+執行，再於另一個 PowerShell 設定相同 `DSH_HOME` 並執行角色命令。
+
+## 日常一鍵啟動
+
+本機依賴已準備好後，雙擊 repo 根目錄的 `Start-Pets.cmd` 即可啟動服務和三個
+角色，不必再輸入上面的 PowerShell 指令。雙擊 `Stop-Pets.cmd` 可正常關閉角色
+與背景服務；聊天歷史保留。預設沿用 Windows smoke-test 資料目錄。
