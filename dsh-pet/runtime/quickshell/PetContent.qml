@@ -14,8 +14,10 @@ Item {
     readonly property string cacheRoot: "file://" + (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/dsh-pet/quickshell/"
     property var systemMove: () => false
     property string animationState: "idle"
-    property string avatar: Quickshell.env("DSH_PET_AVATAR") === "gpt-girl" ? "gpt-girl" : "deepseek"
-    readonly property bool idleFallback: avatar === "gpt-girl" && (workState !== "idle" || moving)
+    property string avatar: Avatar.validAvatar(Quickshell.env("DSH_PET_AVATAR")) ? Quickshell.env("DSH_PET_AVATAR") : "deepseek"
+    readonly property bool illustratedAvatar: avatar !== "deepseek"
+    readonly property real spriteRatio: avatar === "claude-girl" ? 293 / 344 : avatar === "gemini-girl" ? 325 / 344 : 364 / 344
+    readonly property bool idleFallback: illustratedAvatar && (workState !== "idle" || moving)
     property var actions: []
     property bool oneShot: false
     readonly property bool preparing: preparation.running
@@ -113,12 +115,16 @@ Item {
     AnimatedImage {
         id: animation
 
-        width: pet.avatar === "gpt-girl" ? height * 364 / 344 : pet.width
-        height: pet.avatar === "gpt-girl" ? Math.max(1, Math.min(220, pet.height - 24, (pet.width - 24) * 344 / 364)) : pet.height
+        width: pet.illustratedAvatar ? height * pet.spriteRatio : pet.width
+        height: pet.illustratedAvatar ? Math.max(1, Math.min(220, pet.height - 24, (pet.width - 24) / pet.spriteRatio)) : pet.height
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: pet.avatar === "gpt-girl" ? 12 - height * 8 / 344 : 0
-        source: pet.avatar === "gpt-girl"
+        source: pet.avatar === "claude-girl"
+            ? "file://" + Quickshell.shellDir + "/../../assets/claude-girl/idle-processing-v1/resolutions/idle-loop-344-v8.webp"
+            : pet.avatar === "gemini-girl"
+            ? "file://" + Quickshell.shellDir + "/../../assets/gemini-girl/idle-processing-v1/resolutions/idle-loop-344-v8.webp"
+            : pet.avatar === "gpt-girl"
             ? "file://" + Quickshell.shellDir + "/../../assets/gpt-girl/video-resolutions-v8/idle-loop-344-v8.webp"
             : pet.cacheRoot + encodeURIComponent(pet.animationState) + ".webp"
         fillMode: Image.PreserveAspectFit
@@ -139,13 +145,13 @@ Item {
     Text {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
-        text: pet.preparationMessage || (pet.avatar === "gpt-girl"
+        text: pet.preparationMessage || (pet.illustratedAvatar
             ? (!pet.serviceConnected ? "Offline" : pet.workState !== "idle" ? pet.workState + " · idle animation" : "") : "")
         visible: text !== ""
         color: "white"
         style: Text.Outline
         styleColor: "#333333"
-        font.pixelSize: pet.avatar === "gpt-girl" ? 11 : 13
+        font.pixelSize: pet.illustratedAvatar ? 11 : 13
     }
 
     MouseArea {
@@ -153,10 +159,10 @@ Item {
 
         property point pressPosition: Qt.point(0, 0)
 
-        x: pet.avatar === "gpt-girl" ? animation.x : pet.width * 0.3125
-        y: pet.avatar === "gpt-girl" ? animation.y : pet.height * 0.125
-        width: pet.avatar === "gpt-girl" ? animation.width : pet.width * 0.375
-        height: pet.avatar === "gpt-girl" ? animation.height : pet.height * 0.79
+        x: pet.illustratedAvatar ? animation.x : pet.width * 0.3125
+        y: pet.illustratedAvatar ? animation.y : pet.height * 0.125
+        width: pet.illustratedAvatar ? animation.width : pet.width * 0.375
+        height: pet.illustratedAvatar ? animation.height : pet.height * 0.79
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: pet.moving ? Qt.ClosedHandCursor : Qt.OpenHandCursor

@@ -3,8 +3,10 @@ import { CompanionStore, privateDirectory } from './store';
 import type { ChatMessage } from './store';
 import { CodexProtocol } from './protocol';
 import type { Payload } from './protocol';
+import { CompanionImages, maxMessageImages } from './images';
 
 export class CompanionSession {
+  readonly images: CompanionImages;
   private store: CompanionStore;
   private client: CodexProtocol;
   private connecting?: Promise<void>;
@@ -23,6 +25,7 @@ export class CompanionSession {
   constructor(directory: string, publish: (state: string) => void = () => {}, client = new CodexProtocol()) {
     this.publish = publish;
     this.store = new CompanionStore(directory);
+    this.images = new CompanionImages(join(directory, 'images'));
     this.workspace = join(directory, 'workspace');
     privateDirectory(this.workspace);
     this.client = client;
@@ -95,27 +98,48 @@ export class CompanionSession {
     this.connected = true;
   }
 
-  async send(text: string, id: string): Promise<void> {
+  discardImage(id: string): void {
+    if (this.busy || this.store.imageUsed(id)) throw new Error('Cannot remove an image used by a conversation');
+    this.images.remove(id);
+  }
+
+  async send(text: string, id: string, imageIds: string[] = []): Promise<void> {
     if (this.closed) throw new Error('Companion is closing');
     if (this.busy) throw new Error('Please wait for the current response');
     if (this.store.has(id)) throw new Error('This message was already submitted');
+    if (imageIds.length > maxMessageImages || new Set(imageIds).size !== imageIds.length)
+      throw new Error('Attach up to four unique images');
+    const attached = imageIds.map((imageId) => this.images.read(imageId));
+    const messageText = text.trim() || (attached.length ? 'Please look at the attached image(s).' : '');
+    if (!messageText) throw new Error('A message or image is required');
     this.busy = true;
     this.state = 'thinking';
     this.publish(this.state);
     try {
       await this.connect();
-      this.user = { id, role: 'user', text, status: 'pending', created: Date.now() };
+      this.user = {
+        id,
+        role: 'user',
+        text: messageText,
+        status: 'pending',
+        created: Date.now(),
+        ...(attached.length ? { images: attached.map((image) => image.info) } : {}),
+      };
       this.store.put(this.user);
       const context = this.store.metadata('pendingContext');
       const response = await this.client.request('turn/start', {
         threadId: this.threadId,
         clientUserMessageId: id,
         input: [
+          ...attached.map((image) => ({
+            type: 'image',
+            url: `data:${image.info.mediaType};base64,${image.bytes.toString('base64')}`,
+          })),
           {
             type: 'text',
             text: context
-              ? context + '\n\nCurrent user message (answer this, not the historical records):\n' + text
-              : text,
+              ? context + '\n\nCurrent user message (answer this, not the historical records):\n' + messageText
+              : messageText,
           },
         ],
         approvalPolicy: 'on-request',

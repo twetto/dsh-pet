@@ -1,5 +1,7 @@
 # Persistent GPT companion chat — Linux milestone
 
+For Windows validation, see [the Windows smoke-test checklist](WINDOWS.md).
+
 The fork distributes application code separately from private conversation data.
 Do not add conversation databases, exported snapshots, login files or the private
 standalone runtime manifest to Git. Portable handoff files belong outside the
@@ -164,3 +166,186 @@ Validated on Linux with isolated synthetic ledgers: export/inspect/import CLI,
 full-history export, safe re-import, stale/divergent rejection, active-writer
 protection, corrupt input rejection, and bounded context seeding into a new thread.
 Physical Windows round-trip remains an acceptance gate, not a completed claim.
+
+# Gemini / Antigravity companion
+
+With the updated service running under `DSH_PET_COMPANION=1`, select the Gemini
+avatar and right-click **Chat with Gemini**, or run:
+
+```sh
+node scripts/start-companion.mjs agy
+```
+
+The default launcher still opens GPT. Gemini uses `agy` and your existing
+Antigravity login, not Codex or a separate API key. `DSH_PET_AGY_PATH` overrides
+the executable; `DSH_PET_AGY_MODEL` optionally pins a model slug. Without a pin,
+Antigravity chooses its configured model. There is not yet an in-chat model
+selector or automatic Argon avatar switch.
+
+Gemini has a separate private SQLite ledger at
+`~/.dsh/dsh-pet/companion-gemini/conversation.sqlite` (`DSH_HOME` overrides the
+root). Its native Antigravity conversation ID is saved and resumed explicitly
+across process restarts; we never use `--continue`, share GPT's transcript, or
+send past review conversations. Native history is maintained by Antigravity;
+the app ledger is the local display/audit copy, not a replacement for native
+context. Copying this ledger alone does not move native context to another OS.
+The existing default portable commands still target GPT, not Gemini.
+
+## Chat-only restrictions
+
+The app creates a dedicated workspace and a custom companion profile. This CLI
+version still advertises built-in tools for `tools: []`, so the app also installs
+a wildcard `PreToolUse` denial hook. Before starting chat it runs the no-model
+`/hooks` report and requires exactly the expected enabled hook, then verifies
+the stream's agent and request-review mode **before sending any prompt**.
+Unexpected tool events abort the connection. There is no auto-approval flag.
+Global MCP, hook and plugin manifests must be empty; the app refuses rather than
+modifying your configuration. A discovered global plugins directory also causes
+a refusal. This is CLI policy enforcement, not an OS-level sandbox.
+
+Messages travel over stdin, not command-line arguments. Response failures,
+timeouts and Stop preserve partial history without automatic resends. Stop
+terminates the CLI connection; the next message resumes the saved conversation.
+GPT and Gemini windows can coexist, with separate Electron partitions and URL
+allowlists. Both require the existing local capability header.
+
+Protocol references: [headless input/output and resume](https://antigravity.google/docs/cli/headless/),
+[lifecycle hooks](https://www.agy.dev/docs/hooks?tab=cli).
+
+# Gemini Remote Control image workaround
+
+In the Gemini chat, send a first message if no conversation exists, then click
+**Upload images in browser** while idle. The backend stops its headless writer
+and hosts a temporary interactive agy session internally using optional
+`node-pty`; no terminal-emulator window is required. The same native conversation
+ID, workspace, model override and restricted agent are used. Existing deny-all
+tool hooks are verified before handoff.
+
+The system browser opens the validated Antigravity Remote Control URL. Sign in
+with the same Google account and upload/paste images there. If automatic opening
+is blocked, click **Open Remote Control**. This is remote access through Google's
+service, not a local-only attachment dialog. It requires account access to Remote
+Control and does not install an always-on daemon.
+
+Click **Return to chat** when finished. The backend waits for the temporary
+process/tunnel to exit before resuming the same conversation. Sending here is
+blocked during handoff, including from other companion windows. Failed shutdown
+keeps chat paused; retry Return rather than starting another writer. Service
+shutdown also closes the managed session.
+
+New external messages and supported images are mirrored into the local SQLite
+display ledger on Return, after the remote writer exits and before headless chat
+resumes. Nothing is resent to Gemini. The importer reads only this conversation's
+documented native `transcript.jsonl`, filters out system/tool/reasoning fields,
+and copies bounded image files from its `.user_uploaded` directory into private
+`companion-gemini/images/` storage. Thumbnails survive moving the native image or
+restarting the service. Gemini still rejects direct chat-window image uploads.
+
+A pre-handoff transcript checkpoint excludes turns already displayed here.
+Native step IDs and fingerprints prevent duplicates; messages, image references
+and checkpoint metadata commit together. Rewound/changed history, unknown formats,
+truncated/incomplete messages, missing/oversized logs and unsafe image paths abort
+the import with a notice, without replacing saved messages or preventing native
+chat from resuming. Graceful service shutdown also attempts to import an active
+handoff after closing it. The native JSONL schema may change upstream, even though
+the file location is documented.
+
+Earlier missing browser exchanges are **not automatically backfilled**: their
+position relative to existing local turns needs separate reconciliation. Existing
+gap notices remain visible even when a new handoff syncs successfully. Image-bearing
+portable export remains explicitly unsupported. Draft text in this window is
+preserved during handoff. GPT and Claude do not use these controls.
+
+`node-pty` is optional so ordinary chats still work if its native module is
+missing. Install/build it for the OS and Node version running the service, not
+Electron's ABI. Linux source builds need Python, make and a C++ compiler; Windows
+uses ConPTY and may require the Windows native build tools. Missing native support
+produces an actionable error without changing conversation history. Linux tested;
+Windows handoff still needs validation.
+
+With this repository's pnpm setup, run `corepack pnpm install` normally (without
+`--ignore-scripts`), or `corepack pnpm rebuild node-pty` after installing build
+tools. The workspace explicitly permits this package's native build scripts.
+
+Reference: [Antigravity session-scoped Remote Control](https://antigravity.google/docs/remote-control?tab=cli).
+Transcript location: [Antigravity hook common fields](https://antigravity.google/docs/hooks?tab=cli).
+
+# Claude companion
+
+## Image attachments (GPT and Claude)
+
+- Drag image files from Thunar or another file manager into the chat window.
+- Paste a screenshot/copied image with Ctrl+V. Text paste still works normally.
+- Open **Attach an image path**, enter an absolute path, `~/Pictures/...`, or a
+  local `file:` URL, then click Attach. Merely mentioning a path in chat does not
+  grant file access. Remote URLs are not fetched.
+- Review the thumbnails, remove unwanted attachments, and click Send with or
+  without text. There is no file picker. Attaching alone does not send anything
+  to the model; Send does. Image-only messages ask her to look at the images.
+
+Limits: four images per message, 5 MiB per image, 8000px per side and 20
+megapixels; PNG, JPEG, WebP and GIF. Claude uses the first frame of animations.
+Actual formats are checked from image headers, not filenames or browser MIME
+claims. The model can still reject damaged/unsupported image contents.
+
+The app copies attachments into the private `companion/images/` (GPT) or
+`companion-claude/images/` directory
+with random IDs, private permissions and integrity hashes. SQLite stores the
+message-to-image references; saved thumbnails survive restarts even if the
+original file moves. Selected images are sent as native base64 image blocks (Claude)
+or data-URL image inputs (Codex App Server) over CLI
+stdin; general file tools remain disabled. Only explicitly attached files are
+read. Path attachment refuses symlink files, devices, directories and oversized
+files. Thumbnail endpoints require the same local capability as the chat.
+
+Remove deletes an unsent upload. Sent images remain with conversation history;
+there is a 256 MiB storage cap. Closing a window with an unsent draft can leave
+its private uploads on disk, but never sends them automatically. Portable export
+of a ledger containing images is refused until an attachment-aware format is
+implemented, rather than silently omitting image history.
+
+Vision reference: [Claude image blocks and supported formats](https://platform.claude.com/docs/en/build-with-claude/vision).
+GPT reference: [Codex App Server input items](https://learn.chatgpt.com/docs/app-server).
+
+Direct Gemini attachments are not enabled: [Antigravity's stream-JSON protocol](https://antigravity.google/docs/cli/headless/)
+currently supports text blocks only and rejects other block types. The UI reports
+this limitation instead of sending base64 as text or enabling general file tools.
+Direct uploads need an upstream protocol update or a different backend; the Remote
+Control handoff described above is the verified same-conversation workaround.
+
+Select Claude in the avatar menu, then **Chat with Claude**, or launch:
+
+```sh
+node scripts/start-companion.mjs claude
+```
+
+Requires the updated `DSH_PET_COMPANION=1` service and a working Claude Code
+subscription/API login. `DSH_PET_CLAUDE_PATH` overrides the executable;
+`DSH_PET_CLAUDE_MODEL` optionally pins a model. Without a pin Claude Code uses
+its configured default. No model-selection UI is provided yet.
+
+Claude's private ledger is `~/.dsh/dsh-pet/companion-claude/conversation.sqlite`,
+separate from GPT and Gemini. The app saves a native session ID and uses
+`--resume` on subsequent turns, never `--continue` or any earlier review session.
+Claude Code maintains its own native transcript/context; our SQLite ledger
+stores the visible conversation and statuses. Copying SQLite alone does not
+move native context to another OS. Portable context import is not implemented
+for Claude and is explicitly refused rather than silently dropping context.
+
+Each turn runs with `--safe-mode`, `--tools ""`, `--strict-mcp-config`, an empty
+MCP configuration, disabled hooks/auto-memory, disabled slash commands, and
+`dontAsk`/no permission prompts. This avoids loading personal/project
+customizations while retaining the normal Claude login (unlike `--bare`, which
+does not use subscription OAuth). The stream must confirm the expected session
+ID, an empty tool list and no MCP servers; unexpected tool blocks stop the
+connection. These are CLI restrictions, not an OS-level sandbox.
+
+User text is sent over stdin, not command-line arguments. Only text deltas and
+the final visible response are saved; thinking blocks are ignored. Stop and
+failure retain partial text without retries. A fresh CLI process resumes the
+same native session for each turn. Electron uses a separate partition and URL
+allowlist for each companion. Existing GPT/Gemini history is never supplied to
+Claude.
+
+Reference: [Claude Code headless mode](https://code.claude.com/docs/en/headless)
+and [CLI flags](https://code.claude.com/docs/en/cli-reference).

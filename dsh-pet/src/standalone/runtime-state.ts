@@ -5,6 +5,8 @@ import { writePrivateJson } from './ai-storage';
 
 interface RuntimeDetails {
   companion?: boolean;
+  geminiCompanion?: boolean;
+  claudeCompanion?: boolean;
   port: number;
   token: string;
   settingsUrl: string;

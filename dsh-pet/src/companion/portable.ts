@@ -72,6 +72,8 @@ export function exportConversation(databasePath: string): PortableConversation {
     database.exec('PRAGMA trusted_schema=OFF; BEGIN;');
     const version = database.prepare('PRAGMA user_version').get() as { user_version: number };
     if (version.user_version !== 1) throw new Error('Unsupported ledger version');
+    if (database.prepare("SELECT 1 FROM metadata WHERE key LIKE 'images:%' LIMIT 1").get())
+      throw new Error('Portable export does not yet include image attachments; this conversation was not exported.');
     const messages = database
       .prepare('SELECT id, role, text, status, created FROM messages ORDER BY rowid LIMIT 10001')
       .all() as unknown as ChatMessage[];

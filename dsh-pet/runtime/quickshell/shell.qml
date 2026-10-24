@@ -5,7 +5,15 @@ import Quickshell.Io
 ShellRoot {
     Process {
         id: chatLauncher
-        command: ["node", Quickshell.shellDir + "/../../scripts/start-companion.mjs"]
+        command: ["node", Quickshell.shellDir + "/../../scripts/start-companion.mjs", "codex"]
+    }
+    Process {
+        id: geminiChatLauncher
+        command: ["node", Quickshell.shellDir + "/../../scripts/start-companion.mjs", "agy"]
+    }
+    Process {
+        id: claudeChatLauncher
+        command: ["node", Quickshell.shellDir + "/../../scripts/start-companion.mjs", "claude"]
     }
     Process {
         command: ["node", Quickshell.shellDir + "/service.mjs"]
@@ -31,8 +39,8 @@ ShellRoot {
         id: petWindow
         title: "dsh-pet — " + pet.avatar + " — " + (pet.serviceConnected ? pet.workState : "offline")
         color: "transparent"
-        implicitWidth: pet.avatar === "gpt-girl" ? 256 : 400
-        implicitHeight: pet.avatar === "gpt-girl" ? 244 : 225
+        implicitWidth: pet.illustratedAvatar ? 256 : 400
+        implicitHeight: pet.illustratedAvatar ? 244 : 225
         mask: Region { item: pet.hitArea }
 
         PetContent {
@@ -40,8 +48,8 @@ ShellRoot {
             anchors.fill: parent
             systemMove: () => petWindow.startSystemMove()
             onAvatarChanged: {
-                petWindow.width = avatar === "gpt-girl" ? 256 : 400;
-                petWindow.height = avatar === "gpt-girl" ? 244 : 225;
+                petWindow.width = pet.illustratedAvatar ? 256 : 400;
+                petWindow.height = pet.illustratedAvatar ? 244 : 225;
             }
             onContextRequested: (cursorX, cursorY) => {
                 menu.anchor.rect.x = cursorX;
@@ -61,7 +69,13 @@ ShellRoot {
             onChosen: name => pet.playAction(name)
             onResetRequested: pet.resumeWork()
             onAvatarChosen: name => pet.selectAvatar(name)
-            onChatRequested: { if (!chatLauncher.running) chatLauncher.running = true; }
+            onChatRequested: {
+                if (pet.avatar === "claude-girl") {
+                    if (!claudeChatLauncher.running) claudeChatLauncher.running = true;
+                } else if (pet.avatar === "gemini-girl") {
+                    if (!geminiChatLauncher.running) geminiChatLauncher.running = true;
+                } else if (!chatLauncher.running) chatLauncher.running = true;
+            }
         }
 
         IpcHandler {

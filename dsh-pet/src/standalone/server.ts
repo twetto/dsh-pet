@@ -6,6 +6,7 @@ import type { RegisteredRoute, StandaloneLogger } from './context';
 import { createRequestSecurity, rejectRequest, secureResponse } from './request-security';
 import type { RequestSecurity } from './request-security';
 import { boundedRequest, MAX_REQUEST_BYTES, MAX_SETTINGS_BYTES } from './request-body';
+import { maxImageRequestBytes } from '../companion/image-limits';
 import { publicSettings, validateSettings } from './settings';
 import type { StandaloneSettingsService } from './settings';
 import { settingsPage, settingsScript, settingsStyle } from './settings-page';
@@ -239,7 +240,15 @@ export function createRequestListener(
     const hasBody = req.headers['transfer-encoding'] !== undefined || Number(req.headers['content-length'] ?? 0) > 0;
     const bodyMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method ?? '');
     if ((hasBody || bodyMethod) && typeof req.on === 'function') {
-      const limit = pathname === '/standalone-ai/settings' ? MAX_SETTINGS_BYTES : MAX_REQUEST_BYTES;
+      const imageUpload =
+        req.method === 'POST' &&
+        ['/companion/images', '/companion/claude/images'].includes(pathname) &&
+        options.routes.some((candidate) => candidate.path === pathname.slice(0, -'/images'.length));
+      const limit = imageUpload
+        ? maxImageRequestBytes
+        : pathname === '/standalone-ai/settings'
+          ? MAX_SETTINGS_BYTES
+          : MAX_REQUEST_BYTES;
       void boundedRequest(req, res, limit, options.bodyTimeoutMs)
         .then((bounded) => {
           if (bounded) route(bounded, res, pathname);

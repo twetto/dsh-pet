@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { acquireCompanionLock } from './lock';
 import { fingerprint, historicalContext, validatePortable } from './portable';
 import type { PortableConversation } from './portable';
+import type { ImageAttachment } from './images';
 
 export interface ChatMessage {
   id: string;
@@ -12,6 +13,7 @@ export interface ChatMessage {
   text: string;
   status: string;
   created: number;
+  images?: ImageAttachment[];
 }
 
 export function privateDirectory(path: string): void {
@@ -80,24 +82,70 @@ export class CompanionStore {
   }
 
   put(message: ChatMessage): void {
-    this.database
-      .prepare(
-        `INSERT INTO messages VALUES (?, ?, ?, ?, ?)
+    const withImages = !!message.images?.length;
+    if (withImages) this.database.exec('SAVEPOINT companion_images');
+    try {
+      this.database
+        .prepare(
+          `INSERT INTO messages VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET text=excluded.text, status=excluded.status`,
-      )
-      .run(message.id, message.role, message.text, message.status, message.created);
+        )
+        .run(message.id, message.role, message.text, message.status, message.created);
+      if (withImages) {
+        this.setMetadata('images:' + message.id, JSON.stringify(message.images));
+        this.database.exec('RELEASE companion_images');
+      }
+    } catch (error) {
+      if (withImages) this.database.exec('ROLLBACK TO companion_images; RELEASE companion_images');
+      throw error;
+    }
   }
 
   has(id: string): boolean {
     return !!this.database.prepare('SELECT id FROM messages WHERE id=?').get(id);
   }
 
+  message(id: string): ChatMessage | undefined {
+    const message = this.database
+      .prepare('SELECT id, role, text, status, created FROM messages WHERE id=?')
+      .get(id) as unknown as ChatMessage | undefined;
+    if (!message) return;
+    const images = this.metadata('images:' + id);
+    return images ? { ...message, images: JSON.parse(images) as ImageAttachment[] } : message;
+  }
+
+  importMessages(messages: ChatMessage[], metadata: Record<string, string>): void {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const message of messages) {
+        if (this.has(message.id)) throw new Error('Imported message conflicts with saved history');
+        this.put(message);
+      }
+      for (const [key, value] of Object.entries(metadata)) this.setMetadata(key, value);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   messages(): ChatMessage[] {
-    return this.database
+    const messages = this.database
       .prepare(
         'SELECT id, role, text, status, created FROM (SELECT rowid AS sequence, * FROM messages ORDER BY rowid DESC LIMIT 200) ORDER BY sequence',
       )
       .all() as unknown as ChatMessage[];
+    return messages.map((message) => {
+      const images = this.metadata('images:' + message.id);
+      return images ? { ...message, images: JSON.parse(images) as ImageAttachment[] } : message;
+    });
+  }
+
+  imageUsed(id: string): boolean {
+    const rows = this.database.prepare("SELECT value FROM metadata WHERE key LIKE 'images:%'").all() as {
+      value: string;
+    }[];
+    return rows.some((row) => (JSON.parse(row.value) as ImageAttachment[]).some((image) => image.id === id));
   }
 
   importConversation(value: unknown): { added: number; source: string } {

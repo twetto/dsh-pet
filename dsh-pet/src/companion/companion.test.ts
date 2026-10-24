@@ -28,6 +28,41 @@ class FakeCodex extends CodexProtocol {
   }
 }
 
+test('GPT sends native image inputs, preserves attachment history and isolates image IDs', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'pet-gpt-images-'));
+  const client = new FakeCodex();
+  let session = new CompanionSession(join(directory, 'gpt'), () => {}, client);
+  const other = new CompanionSession(join(directory, 'other'), () => {}, new FakeCodex());
+  const data =
+    'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAF0lEQVR4nGP4z8BAEiJN9aiGUQ1DSgMAkPn/Afnh+ngAAAAASUVORK5CYII=';
+  try {
+    const image = session.images.upload({ name: 'red.png', data });
+    await assert.rejects(other.send('Look', randomUUID(), [image.id]));
+    await assert.rejects(session.send('Look', randomUUID(), [image.id, image.id]));
+    assert.equal(session.snapshot().busy, false);
+    await session.send('', randomUUID(), [image.id]);
+    const turn = client.calls.find((call) => call.method === 'turn/start')!;
+    assert.deepEqual(turn.params.input, [
+      { type: 'image', url: 'data:image/png;base64,' + data },
+      { type: 'text', text: 'Please look at the attached image(s).' },
+    ]);
+    assert.deepEqual(turn.params.sandboxPolicy, { type: 'readOnly' });
+    client.notify('turn/completed', { turn: { id: 'test-turn', status: 'completed' } });
+    assert.throws(() => session.discardImage(image.id), /Cannot remove/);
+    await session.close();
+    const resumed = new FakeCodex();
+    session = new CompanionSession(join(directory, 'gpt'), () => {}, resumed);
+    await session.connect();
+    assert.equal(resumed.calls[0].method, 'thread/resume');
+    assert.deepEqual(session.snapshot().messages[0].images, [image]);
+    assert.equal(session.images.read(image.id).bytes.toString('base64'), data);
+  } finally {
+    await session.close();
+    await other.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('ledger preserves messages/thread across restart, deduplicates and marks interrupted output', () => {
   const directory = mkdtempSync(join(tmpdir(), 'pet-ledger-'));
   try {

@@ -74,7 +74,7 @@ export default defineConfig([
     // 否则产物里留下裸 import，在没有 DSH 的环境里 ERR_MODULE_NOT_FOUND。
     noExternal: [/^@deepseek-ai\/(?:dsh-home-paths|dsh-credentials|dsh-llm)$/],
     // 除三个替身外，其余 @deepseek-ai/* 仍视为宿主提供（负向断言）
-    external: [/^@electron\//, /^node:/, /^@deepseek-ai\/(?!dsh-home-paths$|dsh-credentials$|dsh-llm$)/],
+    external: ['node-pty', /^@electron\//, /^node:/, /^@deepseek-ai\/(?!dsh-home-paths$|dsh-credentials$|dsh-llm$)/],
     alias: {
       '@deepseek-ai/dsh-home-paths': shim('dsh-home-paths'),
       '@deepseek-ai/dsh-credentials': shim('dsh-credentials'),
@@ -102,7 +102,13 @@ export default defineConfig([
       /^openai$/,
       /^@anthropic-ai\/sdk$/,
     ],
-    external: ['electron', /^@electron\//, /^node:/, /^@deepseek-ai\/(?!dsh-home-paths$|dsh-credentials$|dsh-llm$)/],
+    external: [
+      'electron',
+      'node-pty',
+      /^@electron\//,
+      /^node:/,
+      /^@deepseek-ai\/(?!dsh-home-paths$|dsh-credentials$|dsh-llm$)/,
+    ],
     alias: {
       '@deepseek-ai/dsh-home-paths': shim('dsh-home-paths'),
       '@deepseek-ai/dsh-credentials': shim('dsh-credentials'),

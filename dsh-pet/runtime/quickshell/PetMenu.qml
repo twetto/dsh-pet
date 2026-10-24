@@ -19,7 +19,7 @@ PopupWindow {
     signal chatRequested()
     color: "transparent"
     implicitWidth: actionsOpen ? 476 : 216
-    implicitHeight: actionsOpen ? 420 : 294
+    implicitHeight: Math.max(actionsOpen ? 420 : 0, rootChoices.implicitHeight + 16)
     grabFocus: true
 
     onVisibleChanged: {
@@ -41,13 +41,17 @@ PopupWindow {
         Keys.onEscapePressed: popup.visible = false
 
         Column {
+            id: rootChoices
             x: 8
             y: 8
             spacing: 4
             Repeater {
-                model: [popup.avatar === "gpt-girl" ? "GPT girl · idle only" : "Actions  ▸", "Resume work state",
+                model: [popup.avatar !== "deepseek" ? (popup.avatar === "claude-girl" ? "Claude" : popup.avatar === "gemini-girl" ? "Gemini" : "GPT girl") + " · idle only" : "Actions  ▸", "Resume work state",
                     (popup.avatar === "deepseek" ? "✓ " : "") + "DeepSeek",
-                    (popup.avatar === "gpt-girl" ? "✓ " : "") + "GPT girl", "Chat with GPT girl", "Close menu"]
+                    (popup.avatar === "gpt-girl" ? "✓ " : "") + "GPT girl",
+                    (popup.avatar === "gemini-girl" ? "✓ " : "") + "Gemini cat girl",
+                    (popup.avatar === "claude-girl" ? "✓ " : "") + "Claude",
+                    popup.avatar === "claude-girl" ? "Chat with Claude" : popup.avatar === "gemini-girl" ? "Chat with Gemini" : "Chat with GPT girl", "Close menu"]
                 delegate: Rectangle {
                     id: rootItem
                     required property string modelData
@@ -73,7 +77,9 @@ PopupWindow {
                             if (rootItem.index === 1) popup.resetRequested();
                             if (rootItem.index === 2) popup.avatarChosen("deepseek");
                             if (rootItem.index === 3) popup.avatarChosen("gpt-girl");
-                            if (rootItem.index === 4) popup.chatRequested();
+                            if (rootItem.index === 4) popup.avatarChosen("gemini-girl");
+                            if (rootItem.index === 5) popup.avatarChosen("claude-girl");
+                            if (rootItem.index === 6) popup.chatRequested();
                             popup.visible = false;
                         }
                     }

@@ -64,27 +64,47 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
   const ai = createStandaloneAi(home, logger);
   const security = createRequestSecurity();
   let publications = Promise.resolve();
+  const companionStates = new Map<string, string>();
+  const publishCompanion = (provider: string, state: string): void => {
+    companionStates.set(provider, state);
+    const active = [...companionStates.values()];
+    const combined = active.includes('thinking') ? 'thinking' : active.includes('error') ? 'error' : 'idle';
+    publications = publications
+      .then(async () => {
+        const base = `http://127.0.0.1:${portRef.value}/dsh-pet-7340`;
+        const snapshot = (await (await fetch(`${base}/state`, { signal: AbortSignal.timeout(4000) })).json()) as {
+          sections: { workStatus: { data: { state?: string; task?: string } | null } };
+        };
+        const previous = snapshot.sections.workStatus.data;
+        if (previous?.state && previous.task !== 'Companion chat') return;
+        await fetch(`${base}/work-status`, {
+          method: combined === 'idle' ? 'DELETE' : 'POST',
+          headers: { 'X-DSH-Pet-Token': security.token, 'content-type': 'application/json' },
+          ...(combined === 'idle' ? {} : { body: JSON.stringify({ state: combined, task: 'Companion chat' }) }),
+          signal: AbortSignal.timeout(4000),
+        });
+      })
+      .catch(() => {});
+  };
   const companion =
     process.env.DSH_PET_COMPANION === '1'
       ? new (await import('../companion/session')).CompanionSession(join(home, 'dsh-pet', 'companion'), (state) => {
-          publications = publications
-            .then(async () => {
-              const base = `http://127.0.0.1:${portRef.value}/dsh-pet-7340`;
-              const snapshot = (await (await fetch(`${base}/state`, { signal: AbortSignal.timeout(4000) })).json()) as {
-                sections: { workStatus: { data: { state?: string; task?: string } | null } };
-              };
-              const previous = snapshot.sections.workStatus.data;
-              if (previous?.state && previous.task !== 'Companion chat') return;
-              await fetch(`${base}/work-status`, {
-                method: state === 'idle' ? 'DELETE' : 'POST',
-                headers: { 'X-DSH-Pet-Token': security.token, 'content-type': 'application/json' },
-                ...(state === 'idle' ? {} : { body: JSON.stringify({ state, task: 'Companion chat' }) }),
-                signal: AbortSignal.timeout(4000),
-              });
-            })
-            .catch(() => {});
+          publishCompanion('codex', state);
         })
       : undefined;
+  const gemini = companion
+    ? new (await import('../companion/agy-session')).AgySession(join(home, 'dsh-pet', 'companion-gemini'), (state) =>
+        publishCompanion('agy', state),
+      )
+    : undefined;
+  if (gemini) routes.push(companionRoute(gemini, 'agy'));
+  const claude = companion
+    ? new (await import('../companion/claude-session')).ClaudeSession(
+        join(home, 'dsh-pet', 'companion-claude'),
+        (state) => publishCompanion('claude', state),
+      )
+    : undefined;
+  if (claude) routes.push(companionRoute(claude, 'claude'));
   if (companion) routes.push(companionRoute(companion));
   const context = createStandaloneContext({
     port: () => portRef.value,
@@ -107,6 +127,8 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
       pid: process.pid,
       pluginRoot: packageRoot,
       companion: !!companion,
+      geminiCompanion: !!gemini,
+      claudeCompanion: !!claude,
       plugin: { root: packageRoot, version: packageVersion(packageRoot) },
       port: portRef.value,
       uptimeSec: Math.round(process.uptime()),
@@ -122,6 +144,8 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
       settingsUrl: security.authenticatedUrl(`http://127.0.0.1:${server.port}`),
       pluginRoot: packageRoot,
       companion: !!companion,
+      geminiCompanion: !!gemini,
+      claudeCompanion: !!claude,
     });
   } catch (error) {
     await context.dispose();
@@ -137,6 +161,8 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
     // 先释放插件注册的 effect（停桌面 Helper、清周期定时器），再关服务
     try {
       await companion?.close();
+      await gemini?.close();
+      await claude?.close();
       await publications;
       await context.dispose();
     } finally {

@@ -70,6 +70,25 @@ LINUX_FRONTEND_PROPOSAL.md
 docs/reviews/
 
 # Reproducible avatar experiments; keep only the accepted playback clip in Git
+dsh-pet/assets/gemini-girl/gemini_generated_video_*.mp4
+dsh-pet/assets/claude-girl/gemini_generated_video_*.mp4
+dsh-pet/assets/gemini-girl/concept-*.png
+!dsh-pet/assets/gemini-girl/concept-normal-v4.png
+!dsh-pet/assets/gemini-girl/concept-argon-v4.png
+dsh-pet/assets/claude-girl/concept-*.png
+!dsh-pet/assets/claude-girl/concept-v3-neutral.png
+dsh-pet/assets/gemini-girl/video-reference-*.png
+!dsh-pet/assets/gemini-girl/video-reference-normal-padded-v2.png
 dsh-pet/assets/gpt-girl/video-*/*
 !dsh-pet/assets/gpt-girl/video-*/README.md
 !dsh-pet/assets/gpt-girl/video-resolutions-v8/idle-loop-344-v8.webp
+dsh-pet/assets/gemini-girl/idle-processing-*/*
+!dsh-pet/assets/gemini-girl/idle-processing-*/README.md
+!dsh-pet/assets/gemini-girl/idle-processing-*/resolutions/
+dsh-pet/assets/gemini-girl/idle-processing-*/resolutions/*
+!dsh-pet/assets/gemini-girl/idle-processing-*/resolutions/idle-loop-344-v8.webp
+dsh-pet/assets/claude-girl/idle-processing-*/*
+!dsh-pet/assets/claude-girl/idle-processing-*/README.md
+!dsh-pet/assets/claude-girl/idle-processing-*/resolutions/
+dsh-pet/assets/claude-girl/idle-processing-*/resolutions/*
+!dsh-pet/assets/claude-girl/idle-processing-*/resolutions/idle-loop-344-v8.webp
